@@ -7,6 +7,7 @@ Shows beautiful colored diffs like Git
 import os
 import logging
 import difflib
+from html import escape
 from io import BytesIO
 from typing import Optional, Tuple
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
@@ -275,8 +276,22 @@ async def receive_second_code(update: Update, context: ContextTypes.DEFAULT_TYPE
         session['second_code']
     )
     
-    # Send text preview
-    preview_message = f"<b>🔍 תצוגת Diff מקדימה</b>\n\n<pre>{text_diff[:4000]}</pre>"
+    # Prepare safe preview text for Telegram (HTML)
+    preview_limit = 2500
+    is_truncated = len(text_diff) > preview_limit
+    preview_text = text_diff[:preview_limit]
+    escaped_preview = escape(preview_text)
+    
+    preview_message = (
+        "<b>🔍 תצוגת Diff מקדימה</b>\n\n"
+        f"<pre>{escaped_preview}</pre>"
+    )
+    
+    if is_truncated:
+        preview_message += (
+            "\n⚠️ התצוגה קוצרה עבור טלגרם. "
+            "לקבלת כל ההבדלים לחץ על קובץ ה-HTML."
+        )
     
     keyboard = [
         [InlineKeyboardButton("📄 קבל קובץ HTML מלא", callback_data='get_html_diff')],
