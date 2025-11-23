@@ -57,7 +57,7 @@
 ## 🛠️ טכנולוגיות
 
 - Python 3.11+
-- python-telegram-bot 20.7
+- python-telegram-bot 22.5 (תואם ל-Python 3.13)
 - difflib (מובנה ב-Python)
 - Render.com (הוסטינג)
 
@@ -96,6 +96,7 @@ def hello():
 ### שגיאות בהתקנה
 - ודא שקובץ requirements.txt קיים
 - ודא ש-Python version הוא 3.11 או חדש יותר
+- אם מופיעה שגיאת `AttributeError: 'Updater' object has no attribute '_Updater__polling_cleanup_cb'`, ודא שהתקנת את התלויות מחדש (`pip install -r requirements.txt`). הגרסה המעודכנת של python-telegram-bot פותרת את הבעיה ב-Python 3.13.
 
 ## 📝 הערות
 
