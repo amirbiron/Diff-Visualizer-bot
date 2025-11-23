@@ -1,0 +1,170 @@
+╔════════════════════════════════════════════════════════════════════╗
+║              🎨 DIFF VISUALIZER BOT - Project Structure            ║
+╚════════════════════════════════════════════════════════════════════╝
+
+📦 DIFF-VISUALIZER-BOT
+│
+├── 🤖 CORE FILES
+│   ├── diff_bot.py ..................... Main bot application
+│   │   ├── DiffGenerator class ........ HTML & text diff generation
+│   │   ├── Conversation handlers ...... User flow management
+│   │   ├── Telegram commands .......... /start, /new, /help, /cancel
+│   │   └── Button callbacks ........... Interactive UI
+│   │
+│   └── test_diff.py .................... Local testing (no Telegram)
+│
+├── ⚙️ CONFIGURATION
+│   ├── requirements.txt ................ Python dependencies
+│   ├── runtime.txt ..................... Python version (3.11.0)
+│   ├── render.yaml ..................... Render deployment config
+│   ├── .env.example .................... Environment template
+│   └── .gitignore ...................... Git ignore rules
+│
+├── 📚 DOCUMENTATION
+│   ├── README.md ....................... Complete guide (Hebrew)
+│   ├── DEPLOY.md ....................... Deployment tutorial
+│   ├── QUICKSTART.md ................... Quick start guide
+│   └── LICENSE ......................... MIT license
+│
+└── 🛠️ UTILITIES
+    └── start.sh ........................ Quick start script
+
+╔════════════════════════════════════════════════════════════════════╗
+║                          🔑 KEY FEATURES                           ║
+╚════════════════════════════════════════════════════════════════════╝
+
+✨ FUNCTIONALITY
+   • Compare two code snippets
+   • Generate colored diff (like Git)
+   • Text preview in Telegram
+   • Full HTML export
+   • Statistics (added/removed lines)
+   • Support for all file types
+
+🎨 UI/UX
+   • Hebrew interface
+   • Interactive buttons
+   • Step-by-step wizard
+   • Examples and help
+   • Mobile-friendly HTML output
+
+🚀 DEPLOYMENT
+   • One-click Render deployment
+   • Free tier compatible
+   • Auto-deploy on git push
+   • Environment variables support
+   • Production-ready logging
+
+╔════════════════════════════════════════════════════════════════════╗
+║                      📊 TECHNICAL STACK                            ║
+╚════════════════════════════════════════════════════════════════════╝
+
+Backend:
+   🐍 Python 3.11
+   📱 python-telegram-bot 21.0.1
+   📝 difflib (built-in)
+   🔧 python-dotenv
+
+Frontend (Telegram):
+   💬 Conversation handlers
+   ⌨️ Inline keyboards
+   📄 Document support
+   🎨 HTML formatting
+
+Deployment:
+   ☁️ Render.com
+   🔄 Git-based deployment
+   🌐 Free tier support
+   📊 Built-in monitoring
+
+╔════════════════════════════════════════════════════════════════════╗
+║                      🎯 DEPLOYMENT STEPS                           ║
+╚════════════════════════════════════════════════════════════════════╝
+
+1. GET BOT TOKEN
+   └─> @BotFather → /newbot → Save token
+
+2. UPLOAD TO GITHUB
+   └─> git init → add → commit → push
+
+3. DEPLOY TO RENDER
+   └─> New Blueprint → Select repo → Add token → Deploy
+
+4. TEST
+   └─> Open bot → /start → Send code → Get diff!
+
+╔════════════════════════════════════════════════════════════════════╗
+║                      📖 QUICK COMMANDS                             ║
+╚════════════════════════════════════════════════════════════════════╝
+
+Local Development:
+   $ pip install -r requirements.txt
+   $ cp .env.example .env
+   $ python diff_bot.py
+   
+Or simply:
+   $ ./start.sh
+
+Testing:
+   $ python test_diff.py
+
+Git Commands:
+   $ git init
+   $ git add .
+   $ git commit -m "Initial commit"
+   $ git push
+
+╔════════════════════════════════════════════════════════════════════╗
+║                      🎓 USE CASES                                  ║
+╚════════════════════════════════════════════════════════════════════╝
+
+1. Code Reviews
+   → Share code changes with team via Telegram
+
+2. Learning Git
+   → Understand diff visualization
+
+3. Version Comparison
+   → Compare different versions of files
+
+4. Quick Debugging
+   → Spot differences quickly
+
+5. Mobile Development
+   → Review code on the go
+
+╔════════════════════════════════════════════════════════════════════╗
+║                      ⚡ PERFORMANCE                                ║
+╚════════════════════════════════════════════════════════════════════╝
+
+Response Time:    < 1 second
+File Size Limit:  Telegram's 20MB
+Memory Usage:     ~50MB (Free tier OK)
+Uptime:           24/7 on Render
+Concurrent Users: Unlimited (polling)
+
+╔════════════════════════════════════════════════════════════════════╗
+║                      🔮 FUTURE ENHANCEMENTS                        ║
+╚════════════════════════════════════════════════════════════════════╝
+
+Planned Features:
+   □ Webhook support (faster responses)
+   □ Multi-file comparison
+   □ Syntax highlighting in text mode
+   □ Diff history/favorites
+   □ Share diff via link
+   □ Dark/light theme toggle
+   □ Export to PDF
+   □ Side-by-side view
+
+╔════════════════════════════════════════════════════════════════════╗
+║                      📞 SUPPORT                                    ║
+╚════════════════════════════════════════════════════════════════════╝
+
+Documentation: README.md, DEPLOY.md
+Issues:        GitHub Issues
+Community:     Pull Requests welcome!
+
+╔════════════════════════════════════════════════════════════════════╗
+║                    Made with ❤️ for developers                    ║
+╚════════════════════════════════════════════════════════════════════╝

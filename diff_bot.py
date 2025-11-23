@@ -1,148 +1,522 @@
+#!/usr/bin/env python3
+"""
+Diff Visualizer Bot - Telegram Bot for comparing code snippets
+Shows beautiful colored diffs like Git
+"""
+
 import os
+import logging
 import difflib
-from telegram import Update, ForceReply
-from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes, ConversationHandler
+from io import BytesIO
+from typing import Optional, Tuple
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.ext import (
+    Application,
+    CommandHandler,
+    MessageHandler,
+    CallbackQueryHandler,
+    ContextTypes,
+    filters,
+    ConversationHandler
+)
+from telegram.constants import ParseMode
 
-# States for conversation
-WAITING_FIRST_CODE, WAITING_SECOND_CODE = range(2)
+# Enable logging
+logging.basicConfig(
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    level=logging.INFO
+)
+logger = logging.getLogger(__name__)
 
-# Bot token from environment variable
-TOKEN = os.environ.get('TELEGRAM_BOT_TOKEN')
+# Conversation states
+WAITING_FIRST, WAITING_SECOND = range(2)
 
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Start command - explain how to use the bot"""
-    welcome_message = (
-        "👋 ברוך הבא ל-Diff Visualizer Bot!\n\n"
-        "🔍 הבוט הזה מציג השוואה צבעונית בין שני קטעי קוד, בדיוק כמו ב-Git.\n\n"
-        "📝 איך להשתמש:\n"
-        "1. שלח /diff להתחלת השוואה חדשה\n"
-        "2. שלח את קטע הקוד הראשון (הגרסה הישנה)\n"
-        "3. שלח את קטע הקוד השני (הגרסה החדשה)\n"
-        "4. קבל תצוגת Diff מעוצבת!\n\n"
-        "💡 הבוט תומך בכל שפת תכנות ומדגיש הבדלים בצבעים."
-    )
-    await update.message.reply_text(welcome_message)
+# User data storage (in production, use Redis or database)
+user_sessions = {}
 
-async def diff_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Start the diff comparison process"""
+
+class DiffGenerator:
+    """Generate beautiful colored diffs"""
+    
+    @staticmethod
+    def generate_html_diff(text1: str, text2: str, title1: str = "Original", title2: str = "Modified") -> str:
+        """Generate HTML diff with syntax highlighting"""
+        
+        diff = difflib.HtmlDiff(wrapcolumn=80)
+        html_diff = diff.make_file(
+            text1.splitlines(),
+            text2.splitlines(),
+            fromdesc=title1,
+            todesc=title2,
+            context=True,
+            numlines=3
+        )
+        
+        # Add custom CSS for better mobile viewing
+        custom_css = """
+        <style>
+            body { 
+                font-family: 'Courier New', monospace; 
+                font-size: 12px;
+                background: #1e1e1e;
+                color: #d4d4d4;
+                margin: 0;
+                padding: 10px;
+            }
+            table { 
+                border-collapse: collapse; 
+                width: 100%;
+                background: #252526;
+            }
+            td { 
+                padding: 2px 5px;
+                border: none;
+                font-size: 11px;
+            }
+            .diff_header { 
+                background: #2d2d30;
+                color: #fff;
+                padding: 8px;
+                font-weight: bold;
+            }
+            .diff_next { background: #3c3c3c; }
+            .diff_add { background: #1e4620; color: #4ec9b0; }
+            .diff_chg { background: #5a4a1a; color: #dcdcaa; }
+            .diff_sub { background: #4a1e1e; color: #f48771; }
+            tr:hover { background: #2a2d2e; }
+        </style>
+        """
+        
+        # Inject custom CSS
+        html_diff = html_diff.replace('</head>', custom_css + '</head>')
+        
+        return html_diff
+    
+    @staticmethod
+    def generate_text_diff(text1: str, text2: str) -> str:
+        """Generate simple text diff for Telegram message"""
+        
+        lines1 = text1.splitlines()
+        lines2 = text2.splitlines()
+        
+        diff = list(difflib.unified_diff(
+            lines1, 
+            lines2, 
+            lineterm='',
+            fromfile='Original',
+            tofile='Modified'
+        ))
+        
+        if not diff:
+            return "✅ הקבצים זהים לחלוטין!"
+        
+        # Format for Telegram
+        formatted_diff = []
+        stats = {'added': 0, 'removed': 0, 'changed': 0}
+        
+        for line in diff:
+            if line.startswith('+++') or line.startswith('---'):
+                formatted_diff.append(f"📄 {line}")
+            elif line.startswith('@@'):
+                formatted_diff.append(f"\n📍 {line}")
+            elif line.startswith('+'):
+                formatted_diff.append(f"➕ {line[1:]}")
+                stats['added'] += 1
+            elif line.startswith('-'):
+                formatted_diff.append(f"➖ {line[1:]}")
+                stats['removed'] += 1
+            elif line.startswith('?'):
+                continue  # Skip hint lines
+            else:
+                formatted_diff.append(f"   {line}")
+        
+        # Add statistics
+        stats_text = f"\n\n📊 סטטיסטיקה:\n"
+        stats_text += f"➕ נוספו: {stats['added']} שורות\n"
+        stats_text += f"➖ הוסרו: {stats['removed']} שורות\n"
+        
+        result = '\n'.join(formatted_diff[:50])  # Limit for Telegram
+        
+        if len(formatted_diff) > 50:
+            result += f"\n\n⚠️ ... ועוד {len(formatted_diff) - 50} שורות"
+        
+        return result + stats_text
+
+
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Send welcome message"""
+    
+    welcome_text = """
+🎨 <b>ברוכים הבאים ל-Diff Visualizer Bot!</b>
+
+בוט זה מאפשר לך להשוות בין שני קטעי קוד ולקבל תצוגת Diff צבעונית כמו ב-Git.
+
+<b>איך להשתמש:</b>
+1️⃣ שלח את קטע הקוד הראשון (Original)
+2️⃣ שלח את קטע הקוד השני (Modified)
+3️⃣ קבל Diff מפורט עם הבדלים מסומנים!
+
+<b>פקודות זמינות:</b>
+/start - הצג הודעה זו
+/new - התחל השוואה חדשה
+/help - עזרה ומידע נוסף
+/example - דוגמה מהירה
+
+💡 <b>טיפ:</b> אפשר לשלוח קוד כטקסט רגיל או כקובץ!
+    """
+    
+    keyboard = [
+        [InlineKeyboardButton("🆕 התחל השוואה חדשה", callback_data='new_comparison')],
+        [InlineKeyboardButton("📖 דוגמה", callback_data='show_example')],
+        [InlineKeyboardButton("❓ עזרה", callback_data='show_help')]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    
     await update.message.reply_text(
-        "📋 שלח את קטע הקוד הראשון (הגרסה הישנה):",
-        reply_markup=ForceReply(selective=True)
+        welcome_text,
+        parse_mode=ParseMode.HTML,
+        reply_markup=reply_markup
     )
-    return WAITING_FIRST_CODE
 
-async def receive_first_code(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Receive the first code snippet"""
-    context.user_data['first_code'] = update.message.text
-    await update.message.reply_text(
-        "✅ קוד ראשון התקבל!\n\n📋 עכשיו שלח את קטע הקוד השני (הגרסה החדשה):",
-        reply_markup=ForceReply(selective=True)
-    )
-    return WAITING_SECOND_CODE
 
-async def receive_second_code(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Receive the second code snippet and generate diff"""
-    first_code = context.user_data.get('first_code', '')
-    second_code = update.message.text
+async def new_comparison(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Start new comparison"""
+    
+    user_id = update.effective_user.id
+    
+    # Clear previous session
+    user_sessions[user_id] = {
+        'first_code': None,
+        'second_code': None,
+        'first_name': 'Original',
+        'second_name': 'Modified'
+    }
+    
+    message = "📝 <b>השוואה חדשה</b>\n\n"
+    message += "שלח את קטע הקוד הראשון (Original):\n"
+    message += "• אפשר לשלוח כטקסט רגיל\n"
+    message += "• אפשר לשלוח כקובץ (.txt, .py, .js וכו')\n\n"
+    message += "לביטול: /cancel"
+    
+    if update.callback_query:
+        await update.callback_query.answer()
+        await update.callback_query.message.reply_text(
+            message,
+            parse_mode=ParseMode.HTML
+        )
+    else:
+        await update.message.reply_text(
+            message,
+            parse_mode=ParseMode.HTML
+        )
+    
+    return WAITING_FIRST
+
+
+async def receive_first_code(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Receive first code snippet"""
+    
+    user_id = update.effective_user.id
+    
+    # Get code from message or document
+    if update.message.document:
+        # Handle file upload
+        file = await update.message.document.get_file()
+        file_content = await file.download_as_bytearray()
+        code = file_content.decode('utf-8', errors='ignore')
+        filename = update.message.document.file_name
+        user_sessions[user_id]['first_name'] = filename
+    elif update.message.text:
+        code = update.message.text
+    else:
+        await update.message.reply_text("❌ סוג קובץ לא נתמך. שלח טקסט או קובץ.")
+        return WAITING_FIRST
+    
+    user_sessions[user_id]['first_code'] = code
+    
+    message = f"✅ קוד ראשון נשמר ({len(code)} תווים)\n\n"
+    message += "📝 עכשיו שלח את קטע הקוד השני (Modified):\n"
+    message += "לביטול: /cancel"
+    
+    await update.message.reply_text(message)
+    
+    return WAITING_SECOND
+
+
+async def receive_second_code(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Receive second code snippet and generate diff"""
+    
+    user_id = update.effective_user.id
+    
+    # Get code from message or document
+    if update.message.document:
+        file = await update.message.document.get_file()
+        file_content = await file.download_as_bytearray()
+        code = file_content.decode('utf-8', errors='ignore')
+        filename = update.message.document.file_name
+        user_sessions[user_id]['second_name'] = filename
+    elif update.message.text:
+        code = update.message.text
+    else:
+        await update.message.reply_text("❌ סוג קובץ לא נתמך. שלח טקסט או קובץ.")
+        return WAITING_SECOND
+    
+    user_sessions[user_id]['second_code'] = code
     
     # Generate diff
-    diff_result = generate_diff(first_code, second_code)
+    await update.message.reply_text("⏳ מייצר Diff...")
     
-    # Send the diff result
-    await update.message.reply_text(
-        "🔍 תוצאת ההשוואה:\n\n" + diff_result,
-        parse_mode='HTML'
+    session = user_sessions[user_id]
+    diff_gen = DiffGenerator()
+    
+    # Generate text diff for preview
+    text_diff = diff_gen.generate_text_diff(
+        session['first_code'],
+        session['second_code']
     )
     
+    # Send text preview
+    preview_message = f"<b>🔍 תצוגת Diff מקדימה</b>\n\n<pre>{text_diff[:4000]}</pre>"
+    
+    keyboard = [
+        [InlineKeyboardButton("📄 קבל קובץ HTML מלא", callback_data='get_html_diff')],
+        [InlineKeyboardButton("🔄 השוואה חדשה", callback_data='new_comparison')]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    
     await update.message.reply_text(
-        "✨ רוצה להשוות עוד? שלח /diff",
+        preview_message,
+        parse_mode=ParseMode.HTML,
+        reply_markup=reply_markup
     )
     
-    # Clear user data
-    context.user_data.clear()
     return ConversationHandler.END
 
-def generate_diff(old_code: str, new_code: str) -> str:
-    """Generate a colored diff between two code snippets"""
-    old_lines = old_code.splitlines(keepends=True)
-    new_lines = new_code.splitlines(keepends=True)
-    
-    # Generate unified diff
-    diff = difflib.unified_diff(
-        old_lines, 
-        new_lines, 
-        fromfile='Old Version', 
-        tofile='New Version',
-        lineterm=''
-    )
-    
-    # Format diff with HTML and emojis
-    result = []
-    result.append("<pre>")
-    
-    for line in diff:
-        line = line.rstrip()
-        if line.startswith('+++') or line.startswith('---'):
-            # File headers
-            result.append(f"<b>{escape_html(line)}</b>")
-        elif line.startswith('@@'):
-            # Hunk header
-            result.append(f"<b>🔹 {escape_html(line)}</b>")
-        elif line.startswith('+'):
-            # Added line
-            result.append(f"<b>➕ {escape_html(line)}</b>")
-        elif line.startswith('-'):
-            # Removed line
-            result.append(f"<b>➖ {escape_html(line)}</b>")
-        else:
-            # Context line
-            result.append(f"  {escape_html(line)}")
-    
-    result.append("</pre>")
-    
-    if len(result) <= 2:  # Only pre tags, no actual diff
-        return "✅ הקודים זהים! לא נמצאו הבדלים."
-    
-    return '\n'.join(result)
 
-def escape_html(text: str) -> str:
-    """Escape HTML special characters"""
-    return text.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
-
-async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Cancel the current operation"""
-    context.user_data.clear()
-    await update.message.reply_text(
-        "❌ פעולה בוטלה. שלח /diff להתחלה מחדש."
-    )
-    return ConversationHandler.END
-
-def main():
-    """Start the bot"""
-    if not TOKEN:
-        print("Error: TELEGRAM_BOT_TOKEN environment variable not set!")
+async def send_html_diff(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Send HTML diff file"""
+    
+    query = update.callback_query
+    await query.answer()
+    
+    user_id = update.effective_user.id
+    
+    if user_id not in user_sessions or not user_sessions[user_id]['first_code']:
+        await query.message.reply_text("❌ אין נתונים. התחל השוואה חדשה עם /new")
         return
     
-    # Create application
-    application = Application.builder().token(TOKEN).build()
+    session = user_sessions[user_id]
+    diff_gen = DiffGenerator()
     
-    # Conversation handler for diff flow
+    # Generate HTML diff
+    html_diff = diff_gen.generate_html_diff(
+        session['first_code'],
+        session['second_code'],
+        session['first_name'],
+        session['second_name']
+    )
+    
+    # Create file
+    html_bytes = html_diff.encode('utf-8')
+    bio = BytesIO(html_bytes)
+    bio.name = 'diff_visualization.html'
+    
+    await query.message.reply_document(
+        document=bio,
+        filename='diff_visualization.html',
+        caption="📄 קובץ HTML עם תצוגת Diff מלאה\nפתח בדפדפן לתצוגה אופטימלית!"
+    )
+
+
+async def show_example(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Show usage example"""
+    
+    query = update.callback_query
+    await query.answer()
+    
+    example_text = """
+<b>📖 דוגמה לשימוש</b>
+
+<b>קוד מקורי:</b>
+<pre>def hello():
+    print("Hello World")
+    return True</pre>
+
+<b>קוד מעודכן:</b>
+<pre>def hello(name):
+    print(f"Hello {name}")
+    return True</pre>
+
+<b>התוצאה תהיה:</b>
+➕ שורות שנוספו (ירוק)
+➖ שורות שהוסרו (אדום)
+📍 מיקום השינויים
+
+<b>רוצה לנסות?</b> לחץ על "התחל השוואה חדשה" 👇
+    """
+    
+    keyboard = [
+        [InlineKeyboardButton("🆕 התחל השוואה חדשה", callback_data='new_comparison')],
+        [InlineKeyboardButton("🔙 חזרה", callback_data='back_to_start')]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    
+    await query.message.edit_text(
+        example_text,
+        parse_mode=ParseMode.HTML,
+        reply_markup=reply_markup
+    )
+
+
+async def show_help(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Show help information"""
+    
+    query = update.callback_query
+    await query.answer()
+    
+    help_text = """
+<b>❓ עזרה - Diff Visualizer Bot</b>
+
+<b>מה הבוט עושה?</b>
+הבוט משווה בין שני קטעי קוד ומציג את ההבדלים בצורה ויזואלית, בדיוק כמו Git diff.
+
+<b>איך זה עובד?</b>
+1. שלח קטע קוד ראשון
+2. שלח קטע קוד שני
+3. קבל השוואה מפורטת!
+
+<b>פורמטים נתמכים:</b>
+✅ טקסט רגיל
+✅ קבצי קוד (.py, .js, .java, .cpp וכו')
+✅ קבצי טקסט (.txt, .md)
+
+<b>תצוגות זמינות:</b>
+• תצוגת טקסט - מהירה ונוחה
+• קובץ HTML - עם צבעים וסינטקס מלא
+
+<b>פקודות:</b>
+/start - תפריט ראשי
+/new - השוואה חדשה
+/cancel - ביטול
+/help - עזרה זו
+
+<b>💡 טיפים:</b>
+• הבוט שומר את ההשוואה האחרונה
+• אפשר להוריד HTML לשמירה
+• עובד מעולה עם כל שפת תכנות
+    """
+    
+    keyboard = [
+        [InlineKeyboardButton("🔙 חזרה", callback_data='back_to_start')]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    
+    await query.message.edit_text(
+        help_text,
+        parse_mode=ParseMode.HTML,
+        reply_markup=reply_markup
+    )
+
+
+async def back_to_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Return to start menu"""
+    
+    query = update.callback_query
+    await query.answer()
+    
+    welcome_text = """
+🎨 <b>Diff Visualizer Bot</b>
+
+השווה בין שני קטעי קוד וקבל תצוגת Diff צבעונית!
+
+בחר פעולה מהתפריט למטה:
+    """
+    
+    keyboard = [
+        [InlineKeyboardButton("🆕 התחל השוואה חדשה", callback_data='new_comparison')],
+        [InlineKeyboardButton("📖 דוגמה", callback_data='show_example')],
+        [InlineKeyboardButton("❓ עזרה", callback_data='show_help')]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    
+    await query.message.edit_text(
+        welcome_text,
+        parse_mode=ParseMode.HTML,
+        reply_markup=reply_markup
+    )
+
+
+async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Cancel current operation"""
+    
+    user_id = update.effective_user.id
+    if user_id in user_sessions:
+        del user_sessions[user_id]
+    
+    await update.message.reply_text(
+        "❌ הפעולה בוטלה.\n\nלהתחלת השוואה חדשה: /new"
+    )
+    
+    return ConversationHandler.END
+
+
+async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Handle button callbacks"""
+    
+    query = update.callback_query
+    
+    if query.data == 'new_comparison':
+        return await new_comparison(update, context)
+    elif query.data == 'get_html_diff':
+        await send_html_diff(update, context)
+    elif query.data == 'show_example':
+        await show_example(update, context)
+    elif query.data == 'show_help':
+        await show_help(update, context)
+    elif query.data == 'back_to_start':
+        await back_to_start(update, context)
+    
+    return ConversationHandler.END
+
+
+def main() -> None:
+    """Start the bot"""
+    
+    # Get token from environment
+    token = os.getenv('TELEGRAM_BOT_TOKEN')
+    if not token:
+        raise ValueError("TELEGRAM_BOT_TOKEN environment variable not set!")
+    
+    # Create application
+    application = Application.builder().token(token).build()
+    
+    # Conversation handler
     conv_handler = ConversationHandler(
-        entry_points=[CommandHandler('diff', diff_command)],
+        entry_points=[
+            CommandHandler('new', new_comparison),
+            CallbackQueryHandler(button_handler, pattern='^new_comparison$')
+        ],
         states={
-            WAITING_FIRST_CODE: [MessageHandler(filters.TEXT & ~filters.COMMAND, receive_first_code)],
-            WAITING_SECOND_CODE: [MessageHandler(filters.TEXT & ~filters.COMMAND, receive_second_code)],
+            WAITING_FIRST: [
+                MessageHandler(filters.TEXT | filters.Document.ALL, receive_first_code)
+            ],
+            WAITING_SECOND: [
+                MessageHandler(filters.TEXT | filters.Document.ALL, receive_second_code)
+            ],
         },
         fallbacks=[CommandHandler('cancel', cancel)],
     )
     
     # Add handlers
     application.add_handler(CommandHandler('start', start))
+    application.add_handler(CommandHandler('help', lambda u, c: show_help(u, c) if u.callback_query else None))
     application.add_handler(conv_handler)
+    application.add_handler(CallbackQueryHandler(button_handler))
     
-    # Start the bot
-    print("🤖 Bot is running...")
+    # Start bot
+    logger.info("🚀 Diff Visualizer Bot is starting...")
     application.run_polling(allowed_updates=Update.ALL_TYPES)
+
 
 if __name__ == '__main__':
     main()
