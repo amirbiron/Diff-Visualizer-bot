@@ -34,8 +34,8 @@ def get_mongo_client(mongodb_uri: str):
             _client = existing
             globals()["_owns_client"] = False
         else:
-            # יצירת לקוח משלנו עם timezone-aware
-            _client = MongoClient(mongodb_uri, tz_aware=True, tzinfo=timezone.utc)
+            # יצירת לקוח משלנו עם timezone-aware (Mongo כבר מחזיר UTC)
+            _client = MongoClient(mongodb_uri, tz_aware=True)
             globals()["_owns_client"] = True
     return _client
 
