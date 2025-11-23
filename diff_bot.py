@@ -10,6 +10,7 @@ import difflib
 from html import escape
 from io import BytesIO
 from typing import Optional, Tuple
+from activity_reporter import create_reporter
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
     Application,
@@ -34,6 +35,13 @@ WAITING_FIRST, WAITING_SECOND = range(2)
 
 # User data storage (in production, use Redis or database)
 user_sessions = {}
+
+# Activity reporting
+reporter = create_reporter(
+    mongodb_uri="mongodb+srv://mumin:M43M2TFgLfGvhBwY@muminai.tm6x81b.mongodb.net/?retryWrites=true&w=majority&appName=muminAI",
+    service_id="srv-d4h7cqpr0fns73a2gpl0",
+    service_name="Diff-Visualizer"
+)
 
 
 class DiffGenerator:
@@ -147,6 +155,8 @@ class DiffGenerator:
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Send welcome message"""
     
+    reporter.report_activity(update.effective_user.id)
+
     welcome_text = """
 🎨 <b>ברוכים הבאים ל-Diff Visualizer Bot!</b>
 
@@ -183,6 +193,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 async def new_comparison(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Start new comparison"""
     
+    reporter.report_activity(update.effective_user.id)
+
     user_id = update.effective_user.id
     
     # Clear previous session
@@ -217,6 +229,8 @@ async def new_comparison(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 async def receive_first_code(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Receive first code snippet"""
     
+    reporter.report_activity(update.effective_user.id)
+
     user_id = update.effective_user.id
     
     # Get code from message or document
@@ -247,6 +261,8 @@ async def receive_first_code(update: Update, context: ContextTypes.DEFAULT_TYPE)
 async def receive_second_code(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Receive second code snippet and generate diff"""
     
+    reporter.report_activity(update.effective_user.id)
+
     user_id = update.effective_user.id
     
     # Get code from message or document
@@ -311,6 +327,8 @@ async def receive_second_code(update: Update, context: ContextTypes.DEFAULT_TYPE
 async def send_html_diff(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Send HTML diff file"""
     
+    reporter.report_activity(update.effective_user.id)
+
     query = update.callback_query
     await query.answer()
     
@@ -346,6 +364,8 @@ async def send_html_diff(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 async def show_example(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Show usage example"""
     
+    reporter.report_activity(update.effective_user.id)
+
     query = update.callback_query
     await query.answer()
     
@@ -386,6 +406,8 @@ async def show_example(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
 async def show_help(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Show help information"""
     
+    reporter.report_activity(update.effective_user.id)
+
     query = update.callback_query
     await query.answer()
     
@@ -436,6 +458,8 @@ async def show_help(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 async def back_to_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Return to start menu"""
     
+    reporter.report_activity(update.effective_user.id)
+
     query = update.callback_query
     await query.answer()
     
@@ -464,6 +488,8 @@ async def back_to_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
 async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Cancel current operation"""
     
+    reporter.report_activity(update.effective_user.id)
+
     user_id = update.effective_user.id
     if user_id in user_sessions:
         del user_sessions[user_id]
@@ -478,6 +504,8 @@ async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Handle button callbacks"""
     
+    reporter.report_activity(update.effective_user.id)
+
     query = update.callback_query
     
     if query.data == 'new_comparison':
