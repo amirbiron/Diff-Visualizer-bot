@@ -64,35 +64,39 @@ class DiffGenerator:
         # Add custom CSS for better mobile viewing
         custom_css = """
         <style>
+            /* 1. הגדרות בסיס: פונט קוד ורקע כהה */
             body { 
-                font-family: 'Courier New', monospace; 
-                font-size: 12px;
-                background: #1e1e1e;
-                color: #d4d4d4;
-                margin: 0;
+                background: #1e1e1e; 
+                color: #d4d4d4; 
+                font-family: Consolas, 'Courier New', monospace; /* קריטי ליישור */
                 padding: 10px;
             }
-            table { 
-                border-collapse: collapse; 
-                width: 100%;
-                background: #252526;
+            
+            /* 2. צבעים בסגנון VS Code (נעימים יותר לעין) */
+            .diff_add { background: #203622; color: #b4eebb; } /* ירוק */
+            .diff_sub { background: #421818; color: #ffaaaa; } /* אדום */
+            .diff_chg { background: #3e3e15; color: #ffffb3; } /* צהוב */
+
+            /* 3. התיקון הקריטי לעברית וסוגריים */
+            table.diff { 
+                width: 100%; 
+                direction: ltr; /* מגדיר את כיוון הטבלה כולה */
+                border-collapse: collapse;
             }
+            
             td { 
-                padding: 2px 5px;
-                border: none;
-                font-size: 11px;
+                direction: ltr !important;    /* מכריח את השורה להתנהג כאנגלית */
+                text-align: left !important;  /* מצמיד הכל לשמאל */
+                unicode-bidi: isolate;        /* הקסם: מבודד את העברית כדי שלא תהפוך את הפיסוק */
+                white-space: pre-wrap;        /* שומר על רווחים ואינדנטציה במדויק */
+                padding: 2px 5px;             /* קצת מרווח לנשימה */
             }
-            .diff_header { 
-                background: #2d2d30;
-                color: #fff;
-                padding: 8px;
-                font-weight: bold;
-            }
-            .diff_next { background: #3c3c3c; }
-            .diff_add { background: #1e4620; color: #4ec9b0; }
-            .diff_chg { background: #5a4a1a; color: #dcdcaa; }
-            .diff_sub { background: #4a1e1e; color: #f48771; }
-            tr:hover { background: #2a2d2e; }
+            
+            /* הגנה נוספת לאלמנטים פנימיים (מספרים בתוך עברית) */
+            span { unicode-bidi: isolate; }
+            
+            /* הסתרת המקרא המיושן למעלה (אופציונלי) */
+            .diff_header { display: none; }
         </style>
         """
         
